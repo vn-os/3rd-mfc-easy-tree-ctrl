@@ -1,1 +1,1 @@
-EasyTreeCtrl - Easy Using MFC CTreeCtrl
+EasyTreeCtrl - Easy Using MFC CTreeCtrl @ Vic P.
