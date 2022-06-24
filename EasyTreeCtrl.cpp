@@ -1,6 +1,5 @@
 #include "pch.h"
 #include "EasyTreeCtrl.h"
-#include "resource.h"
 
 #include <cassert>
 
