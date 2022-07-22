@@ -56,11 +56,24 @@ void EasyTreeCtrl::OnContextMenu(CWnd* pWnd, CPoint point)
 
   // display context menu
 
+  auto fnGetMenuStateFlags = [&](eNotifyType Before) -> UINT
+  {
+    UINT result = MF_STRING | MF_POPUP;
+
+    auto pItem = this->GetpItemFocusing();
+    if (pItem == nullptr || !this->Notify(Before, pItem))
+    {
+      result |= MF_GRAYED | MF_DISABLED;
+    }
+
+    return result;
+  };
+
   CMenu thePopupMenu;
   thePopupMenu.CreatePopupMenu();
-  // thePopupMenu.AppendMenu(MF_STRING | MF_POPUP, ID_CONTEXT_MENU_INSERT, L"Insert");
-  thePopupMenu.AppendMenu(MF_STRING | MF_POPUP, ID_CONTEXT_MENU_MODIFY, L"Modify");
-  thePopupMenu.AppendMenu(MF_STRING | MF_POPUP, ID_CONTEXT_MENU_DELETE, L"Delete");
+  thePopupMenu.AppendMenu(fnGetMenuStateFlags(eNotifyType::BEFORE_INSERTING), ID_CONTEXT_MENU_INSERT, L"Insert");
+  thePopupMenu.AppendMenu(fnGetMenuStateFlags(eNotifyType::BEFORE_MODIFYING), ID_CONTEXT_MENU_MODIFY, L"Modify");
+  thePopupMenu.AppendMenu(fnGetMenuStateFlags(eNotifyType::BEFORE_DELETING),  ID_CONTEXT_MENU_DELETE, L"Delete");
   thePopupMenu.TrackPopupMenu(TPM_LEFTALIGN, point.x, point.y, this);
 }
 
