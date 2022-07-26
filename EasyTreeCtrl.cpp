@@ -5,10 +5,6 @@
 
 #pragma warning(disable : 26454)
 
-#define ID_CONTEXT_MENU_INSERT WM_USER + 100
-#define ID_CONTEXT_MENU_MODIFY WM_USER + 101
-#define ID_CONTEXT_MENU_DELETE WM_USER + 102
-
 IMPLEMENT_DYNAMIC(EasyTreeCtrl, CTreeCtrl)
 
 BEGIN_MESSAGE_MAP(EasyTreeCtrl, CTreeCtrl)
@@ -25,7 +21,7 @@ BEGIN_MESSAGE_MAP(EasyTreeCtrl, CTreeCtrl)
   ON_NOTIFY_REFLECT(TVN_ENDLABELEDIT, OnEndLabelEdit)
 END_MESSAGE_MAP()
 
-EasyTreeCtrl::EasyTreeCtrl(CDialog* pParent) : CTreeCtrl(), m_pParent(pParent), m_pfnOnNotify(nullptr)
+EasyTreeCtrl::EasyTreeCtrl(CDialog* pParent) : CTreeCtrl(), m_pParent(pParent), m_pfnNotify(nullptr)
 {
 }
 
@@ -56,12 +52,12 @@ void EasyTreeCtrl::OnContextMenu(CWnd* pWnd, CPoint point)
 
   // display context menu
 
-  auto fnGetMenuStateFlags = [&](eNotifyType Before) -> UINT
+  auto fnGetMenuStateFlags = [&](UINT ID, eNotifyType Before) -> UINT
   {
     UINT result = MF_STRING | MF_POPUP;
 
     auto pItem = this->GetpItemFocusing();
-    if (pItem == nullptr || !this->Notify(Before, pItem))
+    if (!this->Notify(Before, pItem, UIntToPtr(ID)))
     {
       result |= MF_GRAYED | MF_DISABLED;
     }
@@ -69,49 +65,57 @@ void EasyTreeCtrl::OnContextMenu(CWnd* pWnd, CPoint point)
     return result;
   };
 
-  CMenu thePopupMenu;
-  thePopupMenu.CreatePopupMenu();
-  thePopupMenu.AppendMenu(fnGetMenuStateFlags(eNotifyType::BEFORE_INSERTING), ID_CONTEXT_MENU_INSERT, L"Insert");
-  thePopupMenu.AppendMenu(fnGetMenuStateFlags(eNotifyType::BEFORE_MODIFYING), ID_CONTEXT_MENU_MODIFY, L"Modify");
-  thePopupMenu.AppendMenu(fnGetMenuStateFlags(eNotifyType::BEFORE_DELETING),  ID_CONTEXT_MENU_DELETE, L"Delete");
-  thePopupMenu.TrackPopupMenu(TPM_LEFTALIGN, point.x, point.y, this);
+  #define APPEND_MENU_ITEM(menu, name, id, action) menu.AppendMenu(fnGetMenuStateFlags(id, action), id, L ## name)
+
+  CMenu context_menu;
+  context_menu.CreatePopupMenu();
+  APPEND_MENU_ITEM(context_menu, "Insert", ID_CONTEXT_MENU_INSERT, eNotifyType::BEFORE_INSERTING);
+  APPEND_MENU_ITEM(context_menu, "Modify", ID_CONTEXT_MENU_MODIFY, eNotifyType::BEFORE_MODIFYING);
+  APPEND_MENU_ITEM(context_menu, "Delete", ID_CONTEXT_MENU_DELETE, eNotifyType::BEFORE_DELETING);
+  context_menu.TrackPopupMenu(TPM_LEFTALIGN, point.x, point.y, this);
 }
 
 void EasyTreeCtrl::OnContextMenuHandler(UINT ID)
 {
   auto pItem = this->GetSelectedItem();
-  assert(pItem != nullptr);
+  auto pOptinal = UIntToPtr(ID);
 
   switch (ID)
   {
   case ID_CONTEXT_MENU_INSERT:
     {
-      if (this->Notify(eNotifyType::BEFORE_INSERTING, pItem))
+      if (this->Notify(eNotifyType::BEFORE_INSERTING, pItem, pOptinal))
       {
-        this->Notify(eNotifyType::AFTER_INSERTING, pItem);
+        this->Notify(eNotifyType::AFTER_INSERTING, pItem, pOptinal);
       }
     }
     break;
 
   case ID_CONTEXT_MENU_MODIFY:
     {
-      this->EditItem(pItem);
+      if (pItem != nullptr)
+      {
+        this->EditItem(pItem);
+      }
     }
     break;
 
   case ID_CONTEXT_MENU_DELETE:
     {
-      if (this->Notify(eNotifyType::BEFORE_DELETING, pItem))
+      if (pItem != nullptr)
       {
-        auto pNode = reinterpret_cast<Node*>(this->GetItemData(pItem));
-
-        this->Cleanup(this->GetChildItem(pItem)); // cleanup all child items before deleting
-        this->DeleteItem(pItem);
-        this->Notify(eNotifyType::AFTER_DELETING, pNode);
-
-        if (pNode != nullptr) // after notify after deleting, cleanup the item
+        if (this->Notify(eNotifyType::BEFORE_DELETING, pItem, pOptinal))
         {
-          delete pNode;
+          auto pNode = reinterpret_cast<Node*>(this->GetItemData(pItem));
+
+          this->Cleanup(this->GetChildItem(pItem)); // cleanup all child items before deleting
+          this->DeleteItem(pItem);
+          this->Notify(eNotifyType::AFTER_DELETING, pNode, pOptinal);
+
+          if (pNode != nullptr) // after notify after deleting, cleanup the item
+          {
+            delete pNode;
+          }
         }
       }
     }
@@ -197,9 +201,9 @@ void EasyTreeCtrl::OnEndLabelEdit(NMHDR* pNMHDR, LRESULT* pResult)
   *pResult = FALSE;
 }
 
-void EasyTreeCtrl::OnNotify(std::function<bool(eNotifyType action, Node* pNode)> pfn)
+void EasyTreeCtrl::OnNotify(FnNotify pfn)
 {
-  m_pfnOnNotify = pfn;
+  m_pfnNotify = pfn;
 }
 
 BOOL EasyTreeCtrl::PreTranslateMessage(MSG* pMsg)
@@ -221,40 +225,40 @@ BOOL EasyTreeCtrl::PreTranslateMessage(MSG* pMsg)
   return __super::PreTranslateMessage(pMsg);
 }
 
-bool EasyTreeCtrl::Notify(eNotifyType action, HTREEITEM pItem)
+bool EasyTreeCtrl::Notify(eNotifyType action, HTREEITEM pItem, void* pOptional)
 {
-  if (pItem == nullptr)
+  Node* pNode = nullptr;
+
+  if (pItem != nullptr)
   {
-    return true;
+    pNode = reinterpret_cast<Node*>(this->GetItemData(pItem));
+    if (pNode != nullptr)
+    {
+      TVITEM tv = { 0 };
+      tv.hItem = pItem;
+      tv.mask = TVIF_TEXT;
+      tv.stateMask = TVIF_TEXT;
+
+      WCHAR s[MAXBYTE] = { 0 };
+      tv.pszText = LPWSTR(&s);
+      tv.cchTextMax = ARRAYSIZE(s);
+
+      this->GetItem(&tv);
+      pNode->m_ptr_tv = &tv;
+    }
   }
 
-  auto pNode = reinterpret_cast<Node*>(this->GetItemData(pItem));
-  if (pNode != nullptr)
-  {
-    TVITEM tv = { 0 };
-    tv.hItem = pItem;
-    tv.mask = TVIF_TEXT;
-    tv.stateMask = TVIF_TEXT;
-
-    WCHAR s[MAXBYTE] = { 0 };
-    tv.pszText = LPWSTR(&s);
-    tv.cchTextMax = ARRAYSIZE(s);
-
-    this->GetItem(&tv);
-    pNode->m_ptr_tv = &tv;
-  }
-
-  return this->Notify(action, pNode);
+  return this->Notify(action, pNode, pOptional);
 }
 
-bool EasyTreeCtrl::Notify(eNotifyType action, Node* pNode)
+bool EasyTreeCtrl::Notify(eNotifyType action, Node* pNode, void* pOptional)
 {
-  if (m_pfnOnNotify == nullptr)
+  if (m_pfnNotify == nullptr)
   {
     return true;
   }
 
-  return m_pfnOnNotify(action, pNode);
+  return m_pfnNotify(action, pNode, pOptional);
 }
 
 void EasyTreeCtrl::Populate(std::function<void(HTREEITEM& root)> pfn, const CString& name)

@@ -10,6 +10,10 @@
 #include <afxcmn.h> // MFC support for Windows Common Controls
 #endif // _AFX_NO_AFXCMN_SUPPORT
 
+#define ID_CONTEXT_MENU_INSERT WM_USER + 0x100
+#define ID_CONTEXT_MENU_MODIFY WM_USER + 0x101
+#define ID_CONTEXT_MENU_DELETE WM_USER + 0x102
+
 struct Node
 {
   Node(const std::string& name, void* ptr_data = nullptr)
@@ -65,7 +69,8 @@ public:
   void Clear();
 
 public:
-  void OnNotify(std::function<bool(eNotifyType action, Node* pNode)> pfn);
+  typedef std::function<bool(eNotifyType action, Node* pNode, void* pOptional)> FnNotify;
+  void OnNotify(FnNotify pfn);
 
 protected:
   virtual BOOL PreTranslateMessage(MSG* pMsg);
@@ -88,13 +93,13 @@ public:
   DECLARE_MESSAGE_MAP()
 
 private:
-  HTREEITEM GetpItemFocusing(UINT* pFlags = nullptr);
-  bool EditItem(HTREEITEM pItem);
-  bool Notify(eNotifyType action, HTREEITEM pItem);
-  bool Notify(eNotifyType action, Node* pNode);
   void Cleanup(HTREEITEM pItem);
+  bool EditItem(HTREEITEM pItem);
+  HTREEITEM GetpItemFocusing(UINT* pFlags = nullptr);
+  bool Notify(eNotifyType action, Node* pNode, void* pOptional = nullptr);
+  bool Notify(eNotifyType action, HTREEITEM pItem, void* pOptional = nullptr);
 
 private:
   CDialog* m_pParent;
-  std::function<bool(eNotifyType action, Node* pNode)> m_pfnOnNotify;
+  FnNotify m_pfnNotify;
 };
