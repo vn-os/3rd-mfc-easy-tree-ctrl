@@ -56,7 +56,7 @@ void EasyTreeCtrl::OnContextMenu(CWnd* pWnd, CPoint point)
   {
     UINT result = MF_STRING | MF_POPUP;
 
-    auto pItem = this->GetpItemFocusing();
+    auto pItem = this->GetSelectedItem();
     if (!this->Notify(Before, pItem, UIntToPtr(ID)))
     {
       result |= MF_GRAYED | MF_DISABLED;
